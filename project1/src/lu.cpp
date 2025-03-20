@@ -2,7 +2,7 @@
 #include <omp.h>
 
 #include "decomp.h"
-#include "gen.h"
+#include "matrix.h"
 
 void usage(const char *name)
 {
@@ -58,12 +58,27 @@ int main(int argc, char **argv)
     if (result.singular && verbose)
     {
         std::cout << "The generated matrix is sigular." << std::endl;
+
+        return 0;
     }
     else if (verbose)
     {
+        std::cout << "Permutation\n"
+                  << result.permutation.to_string() << std::endl;
         std::cout << "Lower:\n" << result.lower.to_string() << std::endl;
         std::cout << "Upper:\n" << result.upper.to_string() << std::endl;
     }
+
+    SquareMatrix residual =
+        result.permutation * target - result.lower * result.upper;
+
+    if (verbose)
+    {
+        std::cout << "Residual matrix:\n" << residual.to_string() << std::endl;
+    }
+
+    std::cout << "Norm of the residual matrix: " << residual.norm()
+              << std::endl;
 
     return 0;
 }

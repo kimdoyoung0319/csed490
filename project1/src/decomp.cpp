@@ -4,9 +4,10 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <random>
 #include <vector>
 
-static void initialize(std::vector<size_t> &permutation, SquareMatrix &lower,
+static void initialize(SquareMatrix &permutation, SquareMatrix &lower,
                        SquareMatrix &upper);
 static size_t find_pivot(const SquareMatrix &matrix, size_t block);
 static bool equal(const double a, const double b);
@@ -15,10 +16,7 @@ DecompResult decompose(SquareMatrix target)
 {
     size_t size = target.size();
 
-    std::vector<size_t> permutation(size);
-    SquareMatrix lower(size);
-    SquareMatrix upper(size);
-
+    SquareMatrix permutation(size), lower(size), upper(size);
     initialize(permutation, lower, upper);
 
     for (size_t block = 0; block < size; block++)
@@ -30,7 +28,7 @@ DecompResult decompose(SquareMatrix target)
             return {true, permutation, lower, upper};
         }
 
-        std::swap(permutation[block], permutation[pivot]);
+        permutation.swap_rows(block, pivot);
         target.swap_rows(block, pivot);
         lower.swap_ranges(block, pivot, block);
 
@@ -54,14 +52,33 @@ DecompResult decompose(SquareMatrix target)
     return {false, permutation, lower, upper};
 }
 
-static void initialize(std::vector<size_t> &permutation, SquareMatrix &lower,
+SquareMatrix generate(size_t size)
+{
+    std::random_device device;
+    std::default_random_engine engine{device()};
+    std::uniform_real_distribution distribution{0.0l, 10.0l};
+
+    SquareMatrix result(size);
+
+    for (size_t i = 0; i < size; i++)
+    {
+        for (size_t j = 0; j < size; j++)
+        {
+            result(i, j) = distribution(engine);
+        }
+    }
+
+    return result;
+}
+
+static void initialize(SquareMatrix &permutation, SquareMatrix &lower,
                        SquareMatrix &upper)
 {
     size_t size = permutation.size();
 
     for (size_t i = 0; i < size; i++)
     {
-        permutation[i] = i;
+        permutation(i, i) = 1.0l;
     }
 
     for (size_t i = 0; i < size; i++)

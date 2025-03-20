@@ -15,7 +15,7 @@ SERIAL_FLAGS := -Wall -O2 -g
 
 TARGETS := lu lu-serial lu-debug
 
-SRC_FILES := $(SRC_DIR)/lu.cpp $(SRC_DIR)/decomp.cpp $(SRC_DIR)/gen.cpp $(SRC_DIR)/matrix.cpp
+SRC_FILES := $(SRC_DIR)/lu.cpp $(SRC_DIR)/decomp.cpp $(SRC_DIR)/matrix.cpp
 OBJ_FILES := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/%.o, $(SRC_FILES))
 OBJ_FILES_DEBUG := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/debug/%.o, $(SRC_FILES))
 OBJ_FILES_SERIAL := $(patsubst $(SRC_DIR)/%.cpp, $(OBJ_DIR)/serial/%.o, $(SRC_FILES))

@@ -8,11 +8,12 @@
 struct DecompResult
 {
     bool singular;
-    std::vector<size_t> permutation;
+    SquareMatrix permutation;
     SquareMatrix lower;
     SquareMatrix upper;
 };
 
+SquareMatrix generate(size_t size);
 DecompResult decompose(SquareMatrix target);
 
 #endif
