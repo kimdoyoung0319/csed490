@@ -1,9 +1,9 @@
-#include "matrix.h"
-
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <stdexcept>
+
+#include "matrix.h"
 
 SquareMatrix::SquareMatrix(size_t size) : _size(size), _matrix(size * size) {};
 

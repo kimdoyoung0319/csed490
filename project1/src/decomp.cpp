@@ -1,11 +1,11 @@
-#include "decomp.h"
-#include "matrix.h"
-
-#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <omp.h>
 #include <random>
 #include <vector>
+
+#include "decomp.h"
+#include "matrix.h"
 
 static void initialize(SquareMatrix &permutation, SquareMatrix &lower,
                        SquareMatrix &upper);
@@ -34,17 +34,22 @@ DecompResult decompose(SquareMatrix target)
 
         upper(block, block) = target(block, block);
 
-        for (size_t i = block + 1; i < size; i++)
+#pragma omp parallel shared(target, lower, upper)
         {
-            lower(i, block) = target(i, block) / upper(block, block);
-            upper(block, i) = target(block, i);
-        }
-
-        for (size_t i = block + 1; i < size; i++)
-        {
-            for (size_t j = block + 1; j < size; j++)
+#pragma omp for
+            for (size_t i = block + 1; i < size; i++)
             {
-                target(i, j) -= lower(i, block) * upper(block, j);
+                lower(i, block) = target(i, block) / upper(block, block);
+                upper(block, i) = target(block, i);
+            }
+
+#pragma omp for
+            for (size_t i = block + 1; i < size; i++)
+            {
+                for (size_t j = block + 1; j < size; j++)
+                {
+                    target(i, j) -= lower(i, block) * upper(block, j);
+                }
             }
         }
     }
@@ -76,11 +81,13 @@ static void initialize(SquareMatrix &permutation, SquareMatrix &lower,
 {
     size_t size = permutation.size();
 
+#pragma omp prallel for shared(permutation)
     for (size_t i = 0; i < size; i++)
     {
         permutation(i, i) = 1.0l;
     }
 
+#pragma omp prallel for shared(lower)
     for (size_t i = 0; i < size; i++)
     {
         for (size_t j = 0; j < i; j++)
