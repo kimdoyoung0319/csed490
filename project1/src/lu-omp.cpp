@@ -8,16 +8,17 @@
 #include <iostream>
 #include <random>
 
-double *a, *l, *u;
+double *a, *pa, *l, *u;
+size_t size;
 size_t *p;
 int nworkers;
 
-void initialize(size_t size);
-void generate(size_t size);
-void run(size_t size);
-void verify(size_t size);
+void initialize();
+void generate();
+void run();
+void verify();
 void clean();
-void print(double *a, size_t size);
+void print(double *a);
 
 void usage(const char *name) {
     std::cout << "usage: " << name << " matrix-size nworkers" << std::endl;
@@ -34,7 +35,7 @@ int main(int argc, char **argv) {
     if (argc < 3)
         usage(name);
 
-    int size = atoi(argv[1]);
+    size = atoi(argv[1]);
 
     nworkers = atoi(argv[2]);
 
@@ -42,30 +43,23 @@ int main(int argc, char **argv) {
 
     omp_set_num_threads(nworkers);
 
-    generate(size);
-    initialize(size);
+    generate();
+    initialize();
 
     auto begin = steady_clock::now();
-    run(size);
+    run();
     auto end = steady_clock::now();
     auto elapsed = duration_cast<milliseconds>(end - begin);
 
-    std::cout << "A: " << std::endl;
-    print(a, size);
-    std::cout << "L: " << std::endl;
-    print(l, size);
-    std::cout << "U: " << std::endl;
-    print(u, size);
-
-    std::cout << "Elapsed time: " << elapsed.count() << "ms" << std::endl;
-    verify(size);
+    std::cout << elapsed.count() << std::endl;
+    // verify(size);
 
     clean();
 
     return 0;
 }
 
-void initialize(size_t size) {
+void initialize() {
     l = new double[size * size];
     u = new double[size * size];
     p = new size_t[size];
@@ -76,22 +70,24 @@ void initialize(size_t size) {
     }
 }
 
-void generate(size_t size) {
+void generate() {
     std::random_device d;
     std::default_random_engine e(d());
     std::uniform_real_distribution dist(0.0l, 10.0l);
 
     a = new double[size * size];
+    pa = new double[size * size];
 
     for (size_t i = 0; i < size; i++) {
         for (size_t j = 0; j < size; j++) {
             a[i * size + j] = dist(e);
+            pa[i * size + j] = a[i * size + j];
         }
     }
 };
 
-void run(size_t size) {
-#pragma omp parallel shared(a, l, u, p)
+void run() {
+#pragma omp parallel shared(a, l, u, p, size)
     for (size_t k = 0; k < size; k++) {
         size_t pivot = k;
 
@@ -105,6 +101,8 @@ void run(size_t size) {
             std::swap(p[k], p[pivot]);
             std::swap_ranges(a + k * size, a + k * size + size,
                              a + pivot * size);
+            std::swap_ranges(pa + k * size, pa + k * size + size,
+                             pa + pivot * size);
             std::swap_ranges(l + k * size, l + k * size + k, l + pivot * size);
         }
 
@@ -124,7 +122,7 @@ void run(size_t size) {
     }
 }
 
-void verify(size_t size) {
+void verify() {
     double norm = 0.0;
     double *r = new double[size * size];
     double *lu = new double[size * size];
@@ -142,7 +140,7 @@ void verify(size_t size) {
 
         for (size_t i = 0; i < size; i++) {
             for (size_t j = 0; j < size; j++) {
-                r[i * size + j] = a[i * size + j] - lu[i * size + j];
+                r[i * size + j] = pa[i * size + j] - lu[i * size + j];
             }
         }
 
@@ -161,29 +159,13 @@ void verify(size_t size) {
         }
     }
 
-#pragma omp single
-    {
-        std::cout << "Residual: " << std::endl;
-        print(r, size);
-        std::cout << "PA: " << std::endl;
-        print(a, size);
-        std::cout << "LU: " << std::endl;
-        print(lu, size);
-    }
-
     std::cout << "L2,1 norm of the residual matrix: " << norm << std::endl;
-    delete[] r;
-    delete[] lu;
+    delete[] r, lu;
 }
 
-void clean() {
-    delete[] a;
-    delete[] l;
-    delete[] u;
-    delete[] p;
-}
+void clean() { delete[] a, pa, l, u, p; }
 
-void print(double *a, size_t size) {
+void print(double *a) {
     std::cout << std::fixed << std::setprecision(2);
 
     for (size_t i = 0; i < size; i++) {
