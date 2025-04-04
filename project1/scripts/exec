@@ -1,0 +1,16 @@
+#!/bin/bash
+
+if [ -f result.csv ]; then
+    rm result.csv
+fi
+
+for i in {1..16}
+do
+    echo -n "$i," >> result.csv
+    echo -n "$(../src/lu-omp 8000 $i)," >> result.csv
+    echo -n "$(../src/lu-omp 8000 $i)," >> result.csv
+    echo -n "$(../src/lu-omp 8000 $i)," >> result.csv
+    echo -n "$(../src/lu-omp 8000 $i)," >> result.csv
+    echo -n "$(../src/lu-omp 8000 $i)," >> result.csv
+    echo >> result.csv
+done

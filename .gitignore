@@ -1,4 +1,6 @@
 .DS_Store
 .vscode
 *.pdf
-build/
+submission
+*.tar.gz
+*.csv
