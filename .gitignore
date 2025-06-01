@@ -11,3 +11,5 @@ submission
 *.aux
 *.log
 *.o
+
+!Makefile
