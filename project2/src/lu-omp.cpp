@@ -119,8 +119,8 @@ int main(int argc, char *argv[])
         print_matrix(A, "A");
     }
 
-    std::cout << "Elapsed time: " << elapsed.count() << std::endl;
-    std::cout << "L2,1 norm: " << verify(P, A, L, U, n) << std::endl;
+    std::cout << elapsed.count() << std::endl;
+    std::cout << verify(P, A, L, U, n) << std::endl;
 
     return 0;
 }

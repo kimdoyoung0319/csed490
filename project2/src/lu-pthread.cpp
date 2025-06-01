@@ -8,14 +8,9 @@
 #include <pthread.h>
 #include <vector>
 
-void *find_pivot_row(void *args);
-void *compute_elements(void *args);
-void *update_target_matrix(void *args);
-std::vector<size_t> lu_decomposition_parallel_improved(Matrix &A, Matrix &L,
-                                                       Matrix &U, int n, int t);
 void *worker_thread(void *args);
 
-size_t num_threads, size, block;
+size_t num_threads, size;
 Matrix *target, *lower, *upper;
 pthread_barrier_t barrier1, barrier2, barrier3;
 
@@ -91,29 +86,37 @@ std::vector<size_t> lu_decomposition_seq(Matrix &A, Matrix &L, Matrix &U, int n)
     return P;
 }
 
-/* LU decomposition algorithm implemented using pthreads. */
+/* Parallel version of LU decomposition algorithm implemented using pthreads. */
 std::vector<size_t> lu_decomposition_parallel(Matrix &A, Matrix &L, Matrix &U,
                                               int n, int t)
 {
     using std::swap;
+    using std::swap_ranges;
 
-    printf("Running Pthread version...\n");
+    printf("Running pthread version...\n");
 
-    /* The permutation matrix. */
+    /* Permutation vector. */
     std::vector<size_t> P(n);
 
     /* Thread handles. */
     pthread_t threads[t];
 
-    /* Makes a copy of the target matrix A. */
+    /* The copy of the original target matrix A. */
     Matrix B(A);
 
-    /* Initializes global variables that will be used across threads. */
+    /* Initializes global variables that will be shared throughout the worker
+       threads. */
     target = &B;
     lower = &L;
     upper = &U;
     num_threads = t;
     size = n;
+
+    /* Initializes barriers, permutation vector, lower matrix, and creates
+       worker threads.*/
+    pthread_barrier_init(&barrier1, NULL, t + 1);
+    pthread_barrier_init(&barrier2, NULL, t + 1);
+    pthread_barrier_init(&barrier3, NULL, t + 1);
 
     for (size_t i = 0; i < n; i++)
     {
@@ -121,10 +124,17 @@ std::vector<size_t> lu_decomposition_parallel(Matrix &A, Matrix &L, Matrix &U,
         L[i][i] = 1.0;
     }
 
+    for (size_t id = 0; id < t; id++)
+        pthread_create(&threads[id], NULL, worker_thread, (void *)id);
+
+    /* Main loop over blocks. */
     for (size_t k = 0; k < n; k++)
     {
-        block = k;
-        size_t pivot = k;
+        /* The main thread should compute residual loops. After distributing
+           ((n - k - 1) / t) loops per thread, there are some loops that are not
+           performed by worker threads. `start` is the starting index of such
+           loops. */
+        size_t start = (n - k - 1) / t * t + k + 1, pivot = k;
 
         /* Finds pivot row. */
         for (size_t i = k; i < n; i++)
@@ -133,6 +143,7 @@ std::vector<size_t> lu_decomposition_parallel(Matrix &A, Matrix &L, Matrix &U,
                 pivot = i;
         }
 
+        /* Peforms swap for each matrices. */
         if (k != pivot)
         {
             swap(P[k], P[pivot]);
@@ -140,35 +151,37 @@ std::vector<size_t> lu_decomposition_parallel(Matrix &A, Matrix &L, Matrix &U,
             swap_ranges(L[k].begin(), L[k].begin() + k, L[pivot].begin());
         }
 
+        /* Computes the lower and upper matrices with respect to the original
+           matrix. */
         U[k][k] = B[k][k];
 
-        for (size_t id = 0; id < t; id++)
-            pthread_create(&threads[id], nullptr, compute_elements, (void *)id);
+        /* Alerts other threads the main thread has done its job. */
+        pthread_barrier_wait(&barrier1);
 
-        size_t start = (n - k - 1) / t * t + k + 1;
-
+        /* Performs the residual loops for lower and upper matrices. */
         for (size_t i = start; i < n; i++)
         {
             L[i][k] = B[i][k] / U[k][k];
             U[k][i] = B[k][i];
         }
 
-        for (size_t id = 0; id < t; id++)
-            pthread_join(threads[id], NULL);
+        /* Waits for the other threads to complete their work. */
+        pthread_barrier_wait(&barrier2);
 
-        for (size_t id = 0; id < t; id++)
-            pthread_create(&threads[id], nullptr, update_target_matrix,
-                           (void *)id);
-
+        /* Performs the residual loops for the target matrix. */
         for (size_t i = start; i < n; i++)
         {
             for (size_t j = k + 1; j < n; j++)
                 B[i][j] -= L[i][k] * U[k][j];
         }
 
-        for (size_t id = 0; id < t; id++)
-            pthread_join(threads[id], NULL);
+        /* Waits for the other threads to complete their work. */
+        pthread_barrier_wait(&barrier3);
     }
+
+    pthread_barrier_destroy(&barrier1);
+    pthread_barrier_destroy(&barrier2);
+    pthread_barrier_destroy(&barrier3);
 
     return P;
 }
@@ -199,7 +212,7 @@ int main(int argc, char *argv[])
 
     auto begin = std::chrono::steady_clock::now();
 #ifdef PARALLEL
-    std::vector<size_t> P = lu_decomposition_parallel_improved(A, L, U, n, t);
+    std::vector<size_t> P = lu_decomposition_parallel(A, L, U, n, t);
 #else
     std::vector<size_t> P = lu_decomposition_seq(A, L, U, n);
 #endif
@@ -214,182 +227,51 @@ int main(int argc, char *argv[])
         print_matrix(A, "A");
     }
 
-    std::cout << "Elapsed time: " << elapsed.count() << std::endl;
-    std::cout << "L2,1 norm: " << verify(P, A, L, U, n) << std::endl;
+    std::cout << elapsed.count() << std::endl;
+    std::cout << verify(P, A, L, U, n) << std::endl;
 
     return 0;
 }
 
-/* Finds the maximum row (i.e. the row with maximum first element.) within the
-   range that is assigned to this thread. */
-void *find_pivot_row(void *arg)
-{
-    size_t id = (size_t)arg;
-    size_t loop_per_thread = (size - block) / num_threads;
-
-    size_t start = loop_per_thread * id + block;
-    size_t end = loop_per_thread * (id + 1) + block;
-    size_t max_index = start;
-
-    Matrix &A = *target;
-
-    for (size_t i = start; i < end; i++)
-    {
-        if (std::abs(A[max_index][block]) < std::abs(A[i][block]))
-            max_index = i;
-    }
-
-    pthread_exit((void *)max_index);
-}
-
-/* Computes elements within the thread-specific range. */
-void *compute_elements(void *arg)
-{
-    size_t id = (size_t)arg;
-    size_t loop_per_thread = (size - block - 1) / num_threads;
-
-    size_t start = loop_per_thread * id + (block + 1);
-    size_t end = loop_per_thread * (id + 1) + (block + 1);
-
-    Matrix &A = *target, &L = *lower, &U = *upper;
-
-    for (size_t i = start; i < end; i++)
-    {
-        L[i][block] = A[i][block] / U[block][block];
-        U[block][i] = A[block][i];
-    }
-
-    pthread_exit(nullptr);
-}
-
-/* Updates rows of the target matrix A within the thread-specific range. */
-void *update_target_matrix(void *arg)
-{
-    size_t id = (size_t)arg;
-    size_t loop_per_thread = (size - block - 1) / num_threads;
-
-    size_t start = loop_per_thread * id + (block + 1);
-    size_t end = loop_per_thread * (id + 1) + (block + 1);
-
-    Matrix &A = *target, &L = *lower, &U = *upper;
-
-    for (size_t i = start; i < end; i++)
-    {
-        for (size_t j = block + 1; j < size; j++)
-            A[i][j] -= L[i][block] * U[block][j];
-    }
-
-    pthread_exit(nullptr);
-}
-
-std::vector<size_t> lu_decomposition_parallel_improved(Matrix &A, Matrix &L,
-                                                       Matrix &U, int n, int t)
-{
-    using std::swap;
-    using std::swap_ranges;
-
-    printf("Running pthread version...\n");
-
-    std::vector<size_t> P(n);
-
-    pthread_t threads[t];
-
-    Matrix B(A);
-
-    target = &B;
-    lower = &L;
-    upper = &U;
-    num_threads = t;
-    size = n;
-
-    pthread_barrier_init(&barrier1, NULL, t + 1);
-    pthread_barrier_init(&barrier2, NULL, t + 1);
-    pthread_barrier_init(&barrier3, NULL, t + 1);
-
-    for (size_t i = 0; i < n; i++)
-    {
-        P[i] = i;
-        L[i][i] = 1.0;
-    }
-
-    for (size_t id = 0; id < t; id++)
-        pthread_create(&threads[id], NULL, worker_thread, (void *)id);
-
-    for (size_t k = 0; k < n; k++)
-    {
-        size_t start = (n - k - 1) / t * t + k + 1, pivot = k;
-
-        for (size_t i = k; i < n; i++)
-        {
-            if (std::abs(B[pivot][k]) < std::abs(B[i][k]))
-                pivot = i;
-        }
-
-        if (k != pivot)
-        {
-            swap(P[k], P[pivot]);
-            swap(B[k], B[pivot]);
-            swap_ranges(L[k].begin(), L[k].begin() + k, L[pivot].begin());
-        }
-
-        U[k][k] = B[k][k];
-
-        pthread_barrier_wait(&barrier1);
-
-        for (size_t i = start; i < n; i++)
-        {
-            L[i][k] = B[i][k] / U[k][k];
-            U[k][i] = B[k][i];
-        }
-
-        pthread_barrier_wait(&barrier2);
-
-        for (size_t i = start; i < n; i++)
-        {
-            for (size_t j = k + 1; j < n; j++)
-                B[i][j] -= L[i][k] * U[k][j];
-        }
-
-        pthread_barrier_wait(&barrier3);
-    }
-
-    pthread_barrier_destroy(&barrier1);
-    pthread_barrier_destroy(&barrier2);
-    pthread_barrier_destroy(&barrier3);
-
-    return P;
-}
-
+/* The function that will be executed by each worker thread. */
 void *worker_thread(void *arg)
 {
+    /* Thread id is given by its argument. */
     size_t id = (size_t)arg;
 
     Matrix &B = *target;
     Matrix &L = *lower;
     Matrix &U = *upper;
 
+    /* Main thread over the blocks. */
     for (size_t k = 0; k < size; k++)
     {
+        /* Computes its portion of loop with respects to its id. */
         size_t loop_per_thread = (size - k - 1) / num_threads;
         size_t start = loop_per_thread * id + (k + 1);
         size_t end = loop_per_thread * (id + 1) + (k + 1);
 
+        /* Waits for the main thread to calculate pivot and swap rows. */
         pthread_barrier_wait(&barrier1);
 
+        /* Computes its portion of matrix elements. */
         for (size_t i = start; i < end; i++)
         {
             L[i][k] = B[i][k] / U[k][k];
             U[k][i] = B[k][i];
         }
 
+        /* Waits the other threads to complete their work. */
         pthread_barrier_wait(&barrier2);
 
+        /* Updates its portion of target matrix. */
         for (size_t i = start; i < end; i++)
         {
             for (size_t j = k + 1; j < size; j++)
                 B[i][j] -= L[i][k] * U[k][j];
         }
 
+        /* Waits the other threads to complete their work. */
         pthread_barrier_wait(&barrier3);
     }
 
