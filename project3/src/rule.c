@@ -4,7 +4,6 @@
 
 static int compute_living_neighbors(int *block, int size, int row, int col);
 static void update_elem(int *elem, int num_living_neighbors);
-static inline int is_out_of_bound(int size, int row, int col);
 static inline int *block_elem(int *block, int size, int row, int col);
 static inline int block_value(int *block, int size, int row, int col);
 
@@ -15,8 +14,8 @@ void update_block(int *block, int size) {
 
     int num_living_neighbors;
 
-    for (int i = 0; i < size; i++) {
-        for (int j = 0; j < size; j++) {
+    for (int i = 1; i < size - 1; i++) {
+        for (int j = 1; j < size - 1; j++) {
             num_living_neighbors = compute_living_neighbors(prev, size, i, j);
             update_elem(block_elem(block, size, i, j), num_living_neighbors);
         }
@@ -29,7 +28,7 @@ static int compute_living_neighbors(int *block, int size, int row, int col) {
 
     for (int i = row - 1; i <= row + 1; i++) {
         for (int j = col - 1; j <= col + 1; j++) {
-            if (i == row && j == col || is_out_of_bound(size, i, j))
+            if (i == row && j == col)
                 continue;
 
             if (block_value(block, size, i, j))
@@ -49,11 +48,6 @@ static void update_elem(int *elem, int num_living_neighbors) {
         *elem = 1;
     else
         *elem = 0;
-}
-
-/* Returns if the 2-dimensional index (row, col) is out of bound. */
-static inline int is_out_of_bound(int size, int row, int col) {
-    return row < 0 || row >= size || col < 0 || col >= size;
 }
 
 /* Returns the pointer to the element (row, col) in the block. */

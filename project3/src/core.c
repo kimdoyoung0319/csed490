@@ -1,4 +1,3 @@
-/* TODO: Add ghosts. */
 #include "core.h"
 #include "rule.h"
 #include <math.h>
@@ -55,7 +54,7 @@ void initialize(int argc, char *argv[]) {
 
     // Since the board size might not be divisible by the grid size, it adds padding at the end of
     // each row and column. Calculate the size of the padding.
-    block_size = board_size / grid_size + 1;
+    block_size = board_size % grid_size == 0 ? board_size / grid_size : board_size / grid_size + 1;
     pad_size   = block_size * grid_size - board_size;
 
     if (rank == 0) {
@@ -110,15 +109,8 @@ void execute() {
     int coords[2];
 
     for (int gen = 0; gen < num_gens; gen++) {
-        if (rank == 1) {
-            printf("[#%d]\n", gen);
-            MPI_Cart_coords(cart, rank, 2, coords);
-            printf("(%d, %d)\n", coords[0], coords[1]);
-            print_block();
-        }
-
         exchange();
-        update_block(block, block_size);
+        update_block(block, block_size + 2);
     }
 
     int displs[num_procs];
@@ -152,23 +144,17 @@ void execute_wait() {
                     MPI_COMM_WORLD);
 
         if (rank == 0) {
-            printf("\e[1;1H\e[2J");
             printf("[%d]\n", gen);
         }
 
         print_board();
         exchange();
-        update_block(block, block_size);
-
-        float start = MPI_Wtime();
-        while (MPI_Wtime() - start < 1.0)
-            ;
+        update_block(block, block_size + 2);
     }
 
     MPI_Gatherv(block_elem(1, 1), 1, block_t, board, counts, displs, board_t, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
-        printf("\e[1;1H\e[2J");
         printf("[%d]\n", num_gens);
     }
 
@@ -224,12 +210,10 @@ static void print_board() {
 
     for (int i = 0; i < board_size; i++) {
         for (int j = 0; j < board_size; j++) {
-            printf("%s", board[i * (board_size + pad_size) + j] ? "⬛" : "⬜");
+            printf("%s", board[i * (board_size + pad_size) + j] ? "#" : ".");
         }
         printf("\n");
     }
-
-    printf("\n");
 }
 
 /* Prints the distributed block for debugging purposes. */
@@ -291,8 +275,8 @@ static void exchange() {
                  MPI_INT, source, 0, cart, MPI_STATUS_IGNORE);
 }
 
-/* Returns the address element (row, col) of the block of this process. The row and column indexes
- * are relative to the actual padded block, not the original one. */
+/* Returns the address element (row, col) of the block of this process. The row and column
+ * indexes are relative to the actual padded block, not the original one. */
 static int *block_elem(int row, int col) { return block + row * (block_size + 2) + col; }
 
 /* Returns the shifted source and destination rank for diagonal shift within a Cartesian topology.
