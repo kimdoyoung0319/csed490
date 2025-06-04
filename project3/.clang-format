@@ -2,3 +2,4 @@ BreakBeforeBraces: Attach
 IndentWidth: 4
 SpaceAfterCStyleCast: true
 ColumnLimit: 100
+AlignConsecutiveAssignments: Consecutive
